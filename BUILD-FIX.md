@@ -1,0 +1,1 @@
+The workflow now bootstraps the official OBS plugin template CMake build system, downloads pinned OBS dependencies, and configures libobs before compiling. The requested ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION workaround is retained.
