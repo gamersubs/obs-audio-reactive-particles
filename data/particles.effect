@@ -1,0 +1,28 @@
+uniform float4x4 ViewProj;
+
+struct VertData {
+    float4 pos : POSITION;
+    float4 color : COLOR0;
+};
+
+VertData VSDefault(VertData v_in)
+{
+    VertData v_out;
+    v_out.pos = mul(float4(v_in.pos.xyz, 1.0), ViewProj);
+    v_out.color = v_in.color;
+    return v_out;
+}
+
+float4 PSDraw(VertData v_in) : TARGET
+{
+    return v_in.color;
+}
+
+technique Draw
+{
+    pass
+    {
+        vertex_shader = VSDefault(v_in);
+        pixel_shader = PSDraw(v_in);
+    }
+}

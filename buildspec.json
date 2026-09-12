@@ -1,0 +1,10 @@
+{
+  "name": "obs-audio-reactive-particles",
+  "version": "0.1.0",
+  "displayName": "OBS Audio Reactive Particles",
+  "github": {
+    "owner": "YOUR_GITHUB_USERNAME",
+    "repo": "obs-audio-reactive-particles"
+  },
+  "platforms": ["windows-x64"]
+}
