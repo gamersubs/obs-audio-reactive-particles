@@ -31,7 +31,11 @@
       }
     }
   },
-  "platformConfig": {},
+  "platformConfig": {
+    "macos": {
+      "bundleId": "com.example.obs-audio-reactive-particles"
+    }
+  },
   "name": "obs-audio-reactive-particles",
   "displayName": "OBS Audio Reactive Particles",
   "version": "0.1.0",
