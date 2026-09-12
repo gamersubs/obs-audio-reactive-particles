@@ -1,6 +1,5 @@
 #include <obs-module.h>
 #include <graphics/graphics.h>
-#include <graphics/vec4.h>
 #include <graphics/matrix4.h>
 #include <util/platform.h>
 
@@ -192,6 +191,15 @@ static inline void unpack_color(uint32_t argb, float out[4])
     out[1] = ((argb >> 8) & 0xFF) / 255.0f;
     out[2] = (argb & 0xFF) / 255.0f;
     out[3] = ((argb >> 24) & 0xFF) / 255.0f;
+}
+
+static inline uint32_t pack_argb(const float color[4])
+{
+    const uint32_t a = static_cast<uint32_t>(clamp01(color[3]) * 255.0f + 0.5f);
+    const uint32_t r = static_cast<uint32_t>(clamp01(color[0]) * 255.0f + 0.5f);
+    const uint32_t g = static_cast<uint32_t>(clamp01(color[1]) * 255.0f + 0.5f);
+    const uint32_t b = static_cast<uint32_t>(clamp01(color[2]) * 255.0f + 0.5f);
+    return (a << 24) | (r << 16) | (g << 8) | b;
 }
 
 static void source_update(void *data, obs_data_t *settings);
@@ -434,8 +442,8 @@ static void source_render(void *data, gs_effect_t *)
     for (const auto &p : s->particles) {
         const float pulse = 1.0f + 0.35f * std::sin(s->time * 5.0f + p.seed) + audio_push;
         const float life_t = clamp01(p.life / std::max(0.001f, p.max_life));
-        float alpha = std::sin(life_t * 3.14159265f);
-        alpha *= (0.25f + 0.75f * clamp01(0.25f + s->reactive));
+        float alpha = s->test_mode ? 1.0f : std::sin(life_t * 3.14159265f);
+        alpha *= s->test_mode ? 1.0f : (0.25f + 0.75f * clamp01(0.25f + s->reactive));
         const float color_t = clamp01(0.2f + life_t * 0.8f);
         float col[4];
         for (int k = 0; k < 4; ++k)
@@ -447,18 +455,19 @@ static void source_render(void *data, gs_effect_t *)
         const float y = p.y;
 
         // Diamond-shaped particles keep this source visually distinct from a basic square emitter.
-        gs_color4v(reinterpret_cast<const vec4 *>(col));
+        const uint32_t packed_color = pack_argb(col);
+        gs_color(packed_color);
         gs_vertex2f(x, y - r);
-        gs_color4v(reinterpret_cast<const vec4 *>(col));
+        gs_color(packed_color);
         gs_vertex2f(x + r, y);
-        gs_color4v(reinterpret_cast<const vec4 *>(col));
+        gs_color(packed_color);
         gs_vertex2f(x, y + r);
 
-        gs_color4v(reinterpret_cast<const vec4 *>(col));
+        gs_color(packed_color);
         gs_vertex2f(x, y - r);
-        gs_color4v(reinterpret_cast<const vec4 *>(col));
+        gs_color(packed_color);
         gs_vertex2f(x, y + r);
-        gs_color4v(reinterpret_cast<const vec4 *>(col));
+        gs_color(packed_color);
         gs_vertex2f(x - r, y);
     }
 
