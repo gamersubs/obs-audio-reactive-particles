@@ -1,14 +1,13 @@
-OBS AUDIO REACTIVE PARTICLES - WINDOWS BUILD PACKAGE
+The GitHub Actions artifact is an OBS-style install package.
 
-This package contains the plugin source plus a GitHub Actions workflow that builds a Windows x64 ZIP using the official OBS plugin build environment.
+Close OBS, then merge the artifact's bin and data folders into:
 
-Because this chat environment does not have a Windows/MSVC + OBS build environment, the final DLL cannot be produced here.
+C:\Program Files\obs-studio\
 
-FASTEST WAY TO GET THE INSTALLABLE ZIP:
-1. Create a new GitHub repository named obs-audio-reactive-particles.
-2. Upload all files from this package into the repository.
-3. Open the Actions tab.
-4. Run "Build Windows plugin" using "Run workflow".
-5. Download the workflow artifact named obs-audio-reactive-particles-windows-x64.
-6. Extract its ZIP into your OBS installation directory so the obs-plugins and data folders merge with the OBS folders.
-7. Restart OBS and add the source "Audio Reactive Particles".
+After copying, the plugin DLL should be under:
+
+C:\Program Files\obs-studio\bin\64bit\
+
+and plugin data under:
+
+C:\Program Files\obs-studio\data\obs-plugins\

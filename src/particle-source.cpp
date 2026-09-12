@@ -2,6 +2,7 @@
 #include <graphics/graphics.h>
 #include <graphics/image-file.h>
 #include <util/platform.h>
+#include <media-io/audio-io.h>
 
 #include <algorithm>
 #include <atomic>
@@ -46,7 +47,6 @@ struct Particle {
 
 struct ParticleSource {
     obs_source_t *source = nullptr;
-    obs_volmeter_t *meter = nullptr;
     obs_source_t *audio_source = nullptr;
     std::atomic<float> audio_level{0.0f};
     float reactive = 0.0f;
@@ -91,24 +91,46 @@ static inline float frand(std::mt19937 &rng, float lo, float hi)
     return dist(rng);
 }
 
-static void audio_levels(void *param, const float magnitude[MAX_AUDIO_CHANNELS],
-                         const float peak[MAX_AUDIO_CHANNELS],
-                         const float input_peak[MAX_AUDIO_CHANNELS])
+static void audio_capture(void *param, obs_source_t *source, const struct audio_data *audio_data, bool muted)
 {
-    UNUSED_PARAMETER(input_peak);
+    UNUSED_PARAMETER(source);
 
     auto *s = static_cast<ParticleSource *>(param);
-    const int channels = s->meter ? obs_volmeter_get_nr_channels(s->meter) : 0;
-
-    // obs_volmeter already converts the measured audio to normalized [0, 1]
-    // values. Do not convert these values from dB a second time.
-    float level = 0.0f;
-    for (int i = 0; i < channels && i < MAX_AUDIO_CHANNELS; ++i) {
-        level = std::max(level, magnitude[i]);
-        level = std::max(level, peak[i] * 0.85f);
+    if (!s || !audio_data || muted || audio_data->frames == 0) {
+        if (s)
+            s->audio_level.store(0.0f, std::memory_order_relaxed);
+        return;
     }
 
-    level = clamp01(level * std::max(0.0f, s->audio_gain));
+    // OBS delivers source capture audio to this callback as float planar data.
+    // Measure both RMS magnitude and instantaneous peak directly from the samples.
+    const uint32_t frames = audio_data->frames;
+    float rms_sum = 0.0f;
+    float peak = 0.0f;
+    uint32_t channels = 0;
+
+    for (uint32_t ch = 0; ch < MAX_AUDIO_CHANNELS && ch < MAX_AV_PLANES; ++ch) {
+        const float *samples = reinterpret_cast<const float *>(audio_data->data[ch]);
+        if (!samples)
+            break;
+
+        ++channels;
+        for (uint32_t i = 0; i < frames; ++i) {
+            const float sample = std::fabs(samples[i]);
+            peak = std::max(peak, sample);
+            rms_sum += sample * sample;
+        }
+    }
+
+    if (channels == 0) {
+        s->audio_level.store(0.0f, std::memory_order_relaxed);
+        return;
+    }
+
+    const float sample_count = static_cast<float>(frames * channels);
+    const float rms = std::sqrt(rms_sum / std::max(1.0f, sample_count));
+    const float combined = std::max(rms, peak * 0.80f);
+    const float level = clamp01(combined * std::max(0.0f, s->audio_gain));
     s->audio_level.store(level, std::memory_order_relaxed);
 }
 
@@ -123,51 +145,37 @@ static bool add_audio_source(void *data, obs_source_t *src)
     return true;
 }
 
+static void detach_audio_source(ParticleSource *s)
+{
+    if (!s || !s->audio_source)
+        return;
+
+    obs_source_remove_audio_capture_callback(s->audio_source, audio_capture, s);
+    obs_source_release(s->audio_source);
+    s->audio_source = nullptr;
+    s->audio_level.store(0.0f, std::memory_order_relaxed);
+}
+
 static void attach_audio_source(ParticleSource *s, const char *uuid)
 {
     if (!s)
         return;
 
-    if (s->meter) {
-        obs_volmeter_remove_callback(s->meter, audio_levels, s);
-        obs_volmeter_detach_source(s->meter);
-    }
-    if (s->audio_source) {
-        obs_source_release(s->audio_source);
-        s->audio_source = nullptr;
-    }
+    detach_audio_source(s);
 
-    if (!uuid || !*uuid) {
-        s->audio_level.store(0.0f, std::memory_order_relaxed);
+    if (!uuid || !*uuid)
         return;
-    }
 
     obs_source_t *src = obs_get_source_by_uuid(uuid);
     if (!src || !(obs_source_get_output_flags(src) & OBS_SOURCE_AUDIO)) {
         if (src)
             obs_source_release(src);
-        s->audio_level.store(0.0f, std::memory_order_relaxed);
         return;
     }
 
-    if (!s->meter)
-        s->meter = obs_volmeter_create(OBS_FADER_LOG);
-
-    if (s->meter) {
-        obs_volmeter_set_peak_meter_type(s->meter, SAMPLE_PEAK_METER);
-        obs_volmeter_add_callback(s->meter, audio_levels, s);
-        if (!obs_volmeter_attach_source(s->meter, src)) {
-            blog(LOG_WARNING, "[audio-reactive-particles] Failed to attach audio meter to source: %s", obs_source_get_name(src));
-            obs_volmeter_remove_callback(s->meter, audio_levels, s);
-            obs_volmeter_detach_source(s->meter);
-            obs_source_release(src);
-            return;
-        }
-        s->audio_source = src;
-        blog(LOG_INFO, "[audio-reactive-particles] Audio source attached: %s", obs_source_get_name(src));
-    } else {
-        obs_source_release(src);
-    }
+    obs_source_add_audio_capture_callback(src, audio_capture, s);
+    s->audio_source = src;
+    blog(LOG_INFO, "[audio-reactive-particles] Raw audio capture attached: %s", obs_source_get_name(src));
 }
 
 static void respawn_particle(ParticleSource *s, Particle &p, bool initial)
@@ -270,8 +278,6 @@ static void *source_create(obs_data_t *settings, obs_source_t *source)
 {
     auto *s = new ParticleSource();
     s->source = source;
-    s->meter = obs_volmeter_create(OBS_FADER_LOG);
-
     source_update(s, settings);
     return s;
 }
@@ -282,17 +288,7 @@ static void source_destroy(void *data)
     if (!s)
         return;
 
-    if (s->meter) {
-        obs_volmeter_remove_callback(s->meter, audio_levels, s);
-        obs_volmeter_detach_source(s->meter);
-        obs_volmeter_destroy(s->meter);
-        s->meter = nullptr;
-    }
-
-    if (s->audio_source) {
-        obs_source_release(s->audio_source);
-        s->audio_source = nullptr;
-    }
+    detach_audio_source(s);
 
     obs_enter_graphics();
     unload_particle_image(s);
