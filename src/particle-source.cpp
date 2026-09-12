@@ -95,17 +95,20 @@ static void audio_levels(void *param, const float magnitude[MAX_AUDIO_CHANNELS],
                          const float peak[MAX_AUDIO_CHANNELS],
                          const float input_peak[MAX_AUDIO_CHANNELS])
 {
-    UNUSED_PARAMETER(peak);
     UNUSED_PARAMETER(input_peak);
 
     auto *s = static_cast<ParticleSource *>(param);
-    float db = -60.0f;
     const int channels = s->meter ? obs_volmeter_get_nr_channels(s->meter) : 0;
-    for (int i = 0; i < channels && i < MAX_AUDIO_CHANNELS; ++i)
-        db = std::max(db, magnitude[i]);
 
-    float level = clamp01(obs_db_to_mul(std::max(-60.0f, std::min(0.0f, db))));
-    level = clamp01(level * s->audio_gain);
+    // obs_volmeter already converts the measured audio to normalized [0, 1]
+    // values. Do not convert these values from dB a second time.
+    float level = 0.0f;
+    for (int i = 0; i < channels && i < MAX_AUDIO_CHANNELS; ++i) {
+        level = std::max(level, magnitude[i]);
+        level = std::max(level, peak[i] * 0.85f);
+    }
+
+    level = clamp01(level * std::max(0.0f, s->audio_gain));
     s->audio_level.store(level, std::memory_order_relaxed);
 }
 
@@ -154,12 +157,14 @@ static void attach_audio_source(ParticleSource *s, const char *uuid)
         obs_volmeter_set_peak_meter_type(s->meter, SAMPLE_PEAK_METER);
         obs_volmeter_add_callback(s->meter, audio_levels, s);
         if (!obs_volmeter_attach_source(s->meter, src)) {
+            blog(LOG_WARNING, "[audio-reactive-particles] Failed to attach audio meter to source: %s", obs_source_get_name(src));
             obs_volmeter_remove_callback(s->meter, audio_levels, s);
             obs_volmeter_detach_source(s->meter);
             obs_source_release(src);
             return;
         }
         s->audio_source = src;
+        blog(LOG_INFO, "[audio-reactive-particles] Audio source attached: %s", obs_source_get_name(src));
     } else {
         obs_source_release(src);
     }
@@ -358,7 +363,7 @@ static void source_defaults(obs_data_t *settings)
     obs_data_set_default_int(settings, S_WIDTH, 1920);
     obs_data_set_default_int(settings, S_HEIGHT, 1080);
     obs_data_set_default_string(settings, S_AUDIO_SOURCE, "");
-    obs_data_set_default_bool(settings, S_TEST_MODE, true);
+    obs_data_set_default_bool(settings, S_TEST_MODE, false);
     obs_data_set_default_string(settings, S_PARTICLE_IMAGE, "");
 }
 
@@ -431,7 +436,7 @@ static void source_render(void *data, gs_effect_t *)
     s->time += dt;
 
     // Audio controls both particle emission and particle size. Test mode forces full reaction.
-    const float emission_multiplier = 0.25f + s->reactive * 2.5f;
+    const float emission_multiplier = 0.10f + std::pow(s->reactive, 0.70f) * 3.90f;
     s->spawn_accumulator += s->emit_rate * emission_multiplier * dt;
     const int to_spawn = std::min(300, static_cast<int>(s->spawn_accumulator));
     s->spawn_accumulator -= static_cast<float>(to_spawn);
@@ -486,7 +491,7 @@ static void source_render(void *data, gs_effect_t *)
     // Source-local pixel coordinates: (0,0) is top-left.
     gs_ortho(0.0f, static_cast<float>(s->width), static_cast<float>(s->height), 0.0f, -100.0f, 100.0f);
 
-    const float audio_size = 1.0f + s->reactive * 1.5f;
+    const float audio_size = 0.85f + s->reactive * 2.15f;
     const float texture_aspect = static_cast<float>(iw) / static_cast<float>(ih);
 
     gs_technique_t *technique = gs_effect_get_technique(effect, "Draw");

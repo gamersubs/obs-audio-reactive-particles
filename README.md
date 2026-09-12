@@ -15,3 +15,8 @@ Enable **Test particles (ignore audio)** to force a full-strength particle syste
 ## Windows build
 
 The GitHub Actions workflow bootstraps OBS 32.2.1 and its Windows dependencies, then produces a standard OBS plugin install archive.
+
+
+## Audio reaction
+
+The selected OBS audio source is measured with `obs_volmeter`. Its magnitude and peak values are already normalized to 0..1 by OBS; the plugin uses that normalized level directly, then applies Audio Gain and smoothing. In normal mode, louder audio increases emission and particle size. Test Particles can be enabled to force a full-strength visual signal without audio.
