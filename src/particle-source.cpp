@@ -28,6 +28,7 @@
 #define S_COLOR2 "color2"
 #define S_WIDTH "width"
 #define S_HEIGHT "height"
+#define S_TEST_MODE "test_mode"
 
 struct Particle {
     float x = 0.0f;
@@ -66,6 +67,7 @@ struct ParticleSource {
     uint32_t color2 = 0xFF00D9FF;
     uint32_t width = 1920;
     uint32_t height = 1080;
+    bool test_mode = false;
 
     gs_effect_t *effect = nullptr;
 
@@ -262,6 +264,7 @@ static void source_update(void *data, obs_data_t *settings)
     s->color2 = static_cast<uint32_t>(obs_data_get_int(settings, S_COLOR2));
     s->width = static_cast<uint32_t>(obs_data_get_int(settings, S_WIDTH));
     s->height = static_cast<uint32_t>(obs_data_get_int(settings, S_HEIGHT));
+    s->test_mode = obs_data_get_bool(settings, S_TEST_MODE);
 
     s->particle_count = std::max(50, std::min(5000, s->particle_count));
     s->max_size = std::max(1.0f, std::min(64.0f, s->max_size));
@@ -296,6 +299,7 @@ static void source_defaults(obs_data_t *settings)
     obs_data_set_default_int(settings, S_WIDTH, 1920);
     obs_data_set_default_int(settings, S_HEIGHT, 1080);
     obs_data_set_default_string(settings, S_AUDIO_SOURCE, "");
+    obs_data_set_default_bool(settings, S_TEST_MODE, true);
 }
 
 static obs_properties_t *source_properties(void *)
@@ -327,6 +331,7 @@ static obs_properties_t *source_properties(void *)
     obs_properties_add_color(props, S_COLOR2, obs_module_text("Color2"));
     obs_properties_add_int(props, S_WIDTH, obs_module_text("Width"), 64, 7680, 8);
     obs_properties_add_int(props, S_HEIGHT, obs_module_text("Height"), 64, 4320, 8);
+    obs_properties_add_bool(props, S_TEST_MODE, obs_module_text("TestMode"));
 
     return props;
 }
@@ -368,7 +373,7 @@ static void source_render(void *data, gs_effect_t *)
     last_ns = now;
     dt = std::max(0.0001f, std::min(0.05f, dt));
 
-    const float raw_audio = clamp01(s->audio_level.load(std::memory_order_relaxed));
+    const float raw_audio = s->test_mode ? 1.0f : clamp01(s->audio_level.load(std::memory_order_relaxed));
     const float smoothing = std::max(0.0f, s->audio_smooth);
     const float blend = smoothing > 0.0f ? 1.0f - std::exp(-smoothing * dt) : 1.0f;
     s->reactive += (raw_audio - s->reactive) * blend;
@@ -412,6 +417,11 @@ static void source_render(void *data, gs_effect_t *)
     unpack_color(s->color2, c2);
 
     gs_set_2d_mode();
+    matrix4 viewproj;
+    gs_matrix_get(&viewproj);
+    gs_eparam_t *viewproj_param = gs_effect_get_viewproj_matrix(s->effect);
+    if (viewproj_param)
+        gs_effect_set_matrix4(viewproj_param, &viewproj);
     gs_enable_blending(true);
     gs_blend_function_separate(GS_BLEND_SRCALPHA, GS_BLEND_INVSRCALPHA,
                                GS_BLEND_ONE, GS_BLEND_INVSRCALPHA);
