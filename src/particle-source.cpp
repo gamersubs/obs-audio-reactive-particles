@@ -1,6 +1,7 @@
 #include <obs-module.h>
 #include <graphics/graphics.h>
 #include <graphics/vec4.h>
+#include <graphics/matrix4.h>
 #include <util/platform.h>
 
 #include <algorithm>
