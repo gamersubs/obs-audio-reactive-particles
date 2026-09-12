@@ -1,28 +1,35 @@
-struct VertData {
-    float4 pos : POSITION;
-    float4 color : COLOR0;
+uniform float4x4 ViewProj;
+uniform texture2d image;
+
+sampler_state def_sampler {
+    Filter = Linear;
+    AddressU = Clamp;
+    AddressV = Clamp;
 };
 
-uniform float4x4 ViewProj;
+struct VertInOut {
+    float4 pos : POSITION;
+    float2 uv : TEXCOORD0;
+};
 
-VertData VSDefault(VertData v_in)
+VertInOut VSDefault(VertInOut vert_in)
 {
-    VertData v_out;
-    v_out.pos = mul(v_in.pos, ViewProj);
-    v_out.color = v_in.color;
-    return v_out;
+    VertInOut vert_out;
+    vert_out.pos = mul(float4(vert_in.pos.xyz, 1.0), ViewProj);
+    vert_out.uv = vert_in.uv;
+    return vert_out;
 }
 
-float4 PSDraw(VertData v_in) : TARGET
+float4 PSDraw(VertInOut vert_in) : TARGET
 {
-    return v_in.color;
+    return image.Sample(def_sampler, vert_in.uv);
 }
 
 technique Draw
 {
     pass
     {
-        vertex_shader = VSDefault(v_in);
-        pixel_shader = PSDraw(v_in);
+        vertex_shader = VSDefault(vert_in);
+        pixel_shader = PSDraw(vert_in);
     }
 }

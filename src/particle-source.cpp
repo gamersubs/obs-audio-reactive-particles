@@ -1,6 +1,6 @@
 #include <obs-module.h>
 #include <graphics/graphics.h>
-#include <graphics/matrix4.h>
+#include <graphics/image-file.h>
 #include <util/platform.h>
 
 #include <algorithm>
@@ -29,6 +29,7 @@
 #define S_WIDTH "width"
 #define S_HEIGHT "height"
 #define S_TEST_MODE "test_mode"
+#define S_PARTICLE_IMAGE "particle_image"
 
 struct Particle {
     float x = 0.0f;
@@ -67,9 +68,11 @@ struct ParticleSource {
     uint32_t color2 = 0xFF00D9FF;
     uint32_t width = 1920;
     uint32_t height = 1080;
-    bool test_mode = false;
-
-    gs_effect_t *effect = nullptr;
+    bool test_mode = true;
+    std::string particle_image_path;
+    std::string loaded_particle_image_path;
+    gs_image_file_t particle_image{};
+    bool particle_image_initialized = false;
 
     std::vector<Particle> particles;
     std::mt19937 rng{0xA11CE123u};
@@ -202,6 +205,55 @@ static inline uint32_t pack_argb(const float color[4])
     return (a << 24) | (r << 16) | (g << 8) | b;
 }
 
+static std::string default_particle_image_path()
+{
+    char *path = obs_module_file("particle.png");
+    std::string result = path ? path : "";
+    if (path)
+        bfree(path);
+    return result;
+}
+
+static void unload_particle_image(ParticleSource *s)
+{
+    if (!s || !s->particle_image_initialized)
+        return;
+
+    gs_image_file_free(&s->particle_image);
+    s->particle_image_initialized = false;
+    s->loaded_particle_image_path.clear();
+}
+
+static bool load_particle_image(ParticleSource *s)
+{
+    if (!s)
+        return false;
+
+    std::string path = s->particle_image_path;
+    if (path.empty())
+        path = default_particle_image_path();
+
+    if (path.empty())
+        return false;
+
+    if (s->particle_image_initialized && s->loaded_particle_image_path == path && s->particle_image.texture)
+        return true;
+
+    unload_particle_image(s);
+
+    gs_image_file_init(&s->particle_image, path.c_str());
+    gs_image_file_init_texture(&s->particle_image);
+    if (!s->particle_image.texture || !s->particle_image.cx || !s->particle_image.cy) {
+        blog(LOG_ERROR, "[audio-reactive-particles] Failed to load particle image: %s", path.c_str());
+        gs_image_file_free(&s->particle_image);
+        return false;
+    }
+
+    s->particle_image_initialized = true;
+    s->loaded_particle_image_path = path;
+    return true;
+}
+
 static void source_update(void *data, obs_data_t *settings);
 
 static const char *source_name(void *)
@@ -237,12 +289,9 @@ static void source_destroy(void *data)
         s->audio_source = nullptr;
     }
 
-    if (s->effect) {
-        obs_enter_graphics();
-        gs_effect_destroy(s->effect);
-        obs_leave_graphics();
-        s->effect = nullptr;
-    }
+    obs_enter_graphics();
+    unload_particle_image(s);
+    obs_leave_graphics();
 
     delete s;
 }
@@ -274,6 +323,7 @@ static void source_update(void *data, obs_data_t *settings)
     s->width = static_cast<uint32_t>(obs_data_get_int(settings, S_WIDTH));
     s->height = static_cast<uint32_t>(obs_data_get_int(settings, S_HEIGHT));
     s->test_mode = obs_data_get_bool(settings, S_TEST_MODE);
+    s->particle_image_path = obs_data_get_string(settings, S_PARTICLE_IMAGE);
 
     s->particle_count = std::max(50, std::min(5000, s->particle_count));
     s->max_size = std::max(1.0f, std::min(64.0f, s->max_size));
@@ -309,6 +359,7 @@ static void source_defaults(obs_data_t *settings)
     obs_data_set_default_int(settings, S_HEIGHT, 1080);
     obs_data_set_default_string(settings, S_AUDIO_SOURCE, "");
     obs_data_set_default_bool(settings, S_TEST_MODE, true);
+    obs_data_set_default_string(settings, S_PARTICLE_IMAGE, "");
 }
 
 static obs_properties_t *source_properties(void *)
@@ -340,6 +391,8 @@ static obs_properties_t *source_properties(void *)
     obs_properties_add_color(props, S_COLOR2, obs_module_text("Color2"));
     obs_properties_add_int(props, S_WIDTH, obs_module_text("Width"), 64, 7680, 8);
     obs_properties_add_int(props, S_HEIGHT, obs_module_text("Height"), 64, 4320, 8);
+    obs_properties_add_path(props, S_PARTICLE_IMAGE, obs_module_text("ParticleImage"), OBS_PATH_FILE,
+        "Image Files (*.png *.jpg *.jpeg *.bmp *.gif)", nullptr);
     obs_properties_add_bool(props, S_TEST_MODE, obs_module_text("TestMode"));
 
     return props;
@@ -361,22 +414,10 @@ static void source_render(void *data, gs_effect_t *)
     if (!s || s->particles.empty())
         return;
 
-    // The custom effect is loaded lazily on the graphics thread.
-    if (!s->effect) {
-        char *effect_path = obs_module_file("particles.effect");
-        char *error = nullptr;
-        s->effect = gs_effect_create_from_file(effect_path, &error);
-        if (!s->effect) {
-            blog(LOG_ERROR, "[audio-reactive-particles] Failed to load effect: %s", error ? error : "unknown error");
-        }
-        if (error)
-            bfree(error);
-        bfree(effect_path);
-        if (!s->effect)
-            return;
-    }
+    if (!load_particle_image(s))
+        return;
 
-    static uint64_t last_ns = 0;
+    static thread_local uint64_t last_ns = 0;
     const uint64_t now = os_gettime_ns();
     float dt = last_ns ? static_cast<float>(now - last_ns) / 1.0e9f : (1.0f / 60.0f);
     last_ns = now;
@@ -388,9 +429,10 @@ static void source_render(void *data, gs_effect_t *)
     s->reactive += (raw_audio - s->reactive) * blend;
 
     s->time += dt;
-    const float audio_push = s->reactive * s->audio_boost;
 
-    s->spawn_accumulator += s->emit_rate * (0.25f + s->reactive * 2.5f) * dt;
+    // Audio controls both particle emission and particle size. Test mode forces full reaction.
+    const float emission_multiplier = 0.25f + s->reactive * 2.5f;
+    s->spawn_accumulator += s->emit_rate * emission_multiplier * dt;
     const int to_spawn = std::min(300, static_cast<int>(s->spawn_accumulator));
     s->spawn_accumulator -= static_cast<float>(to_spawn);
 
@@ -399,7 +441,6 @@ static void source_render(void *data, gs_effect_t *)
             break;
         s->spawn_cursor %= s->particles.size();
         respawn_particle(s, s->particles[s->spawn_cursor], false);
-        s->particles[s->spawn_cursor].size *= (1.0f + 0.9f * s->reactive);
         ++s->spawn_cursor;
     }
 
@@ -407,7 +448,6 @@ static void source_render(void *data, gs_effect_t *)
         p.life += dt;
         if (p.life > p.max_life) {
             respawn_particle(s, p, false);
-            p.size *= (1.0f + 0.7f * s->reactive);
         }
 
         p.vy += s->gravity * dt;
@@ -415,71 +455,74 @@ static void source_render(void *data, gs_effect_t *)
         p.x += p.vx * dt;
         p.y += p.vy * dt;
         p.rot += p.spin * dt;
-        p.size = std::max(0.25f, std::min(96.0f, p.size));
 
         if (p.x < -100.0f) p.x = static_cast<float>(s->width) + 100.0f;
         if (p.x > static_cast<float>(s->width) + 100.0f) p.x = -100.0f;
     }
 
-    float c1[4], c2[4];
-    unpack_color(s->color1, c1);
-    unpack_color(s->color2, c2);
+    gs_texture_t *texture = s->particle_image.texture;
+    if (!texture)
+        return;
 
-    gs_set_2d_mode();
-    matrix4 viewproj;
-    gs_matrix_get(&viewproj);
-    gs_eparam_t *viewproj_param = gs_effect_get_viewproj_matrix(s->effect);
-    if (viewproj_param)
-        gs_effect_set_matrix4(viewproj_param, &viewproj);
-    gs_enable_blending(true);
-    gs_blend_function_separate(GS_BLEND_SRCALPHA, GS_BLEND_INVSRCALPHA,
-                               GS_BLEND_ONE, GS_BLEND_INVSRCALPHA);
+    gs_effect_t *effect = obs_get_base_effect(OBS_EFFECT_DEFAULT);
+    if (!effect)
+        return;
 
-    gs_render_start(true);
+    gs_eparam_t *image_param = gs_effect_get_param_by_name(effect, "image");
+    if (!image_param)
+        return;
 
-    // Two triangles per particle. Color is computed per-vertex so each particle
-    // can fade at birth/death without requiring a second texture.
-    for (const auto &p : s->particles) {
-        const float pulse = 1.0f + 0.35f * std::sin(s->time * 5.0f + p.seed) + audio_push;
-        const float life_t = clamp01(p.life / std::max(0.001f, p.max_life));
-        float alpha = s->test_mode ? 1.0f : std::sin(life_t * 3.14159265f);
-        alpha *= s->test_mode ? 1.0f : (0.25f + 0.75f * clamp01(0.25f + s->reactive));
-        const float color_t = clamp01(0.2f + life_t * 0.8f);
-        float col[4];
-        for (int k = 0; k < 4; ++k)
-            col[k] = c1[k] * (1.0f - color_t) + c2[k] * color_t;
-        col[3] = std::max(0.0f, std::min(1.0f, alpha * col[3]));
+    const uint32_t iw = s->particle_image.cx;
+    const uint32_t ih = s->particle_image.cy;
+    if (!iw || !ih)
+        return;
 
-        const float r = p.size * pulse * (1.0f + 0.8f * s->reactive) * (0.85f + 0.15f * s->glow);
-        const float x = p.x;
-        const float y = p.y;
+    gs_effect_set_texture(image_param, texture);
+    gs_blend_state_push();
+    gs_blend_function(GS_BLEND_SRCALPHA, GS_BLEND_INVSRCALPHA);
+    gs_projection_push();
+    gs_matrix_push();
 
-        // Diamond-shaped particles keep this source visually distinct from a basic square emitter.
-        const uint32_t packed_color = pack_argb(col);
-        gs_color(packed_color);
-        gs_vertex2f(x, y - r);
-        gs_color(packed_color);
-        gs_vertex2f(x + r, y);
-        gs_color(packed_color);
-        gs_vertex2f(x, y + r);
+    // Source-local pixel coordinates: (0,0) is top-left.
+    gs_ortho(0.0f, static_cast<float>(s->width), static_cast<float>(s->height), 0.0f, -100.0f, 100.0f);
 
-        gs_color(packed_color);
-        gs_vertex2f(x, y - r);
-        gs_color(packed_color);
-        gs_vertex2f(x, y + r);
-        gs_color(packed_color);
-        gs_vertex2f(x - r, y);
+    const float audio_size = 1.0f + s->reactive * 1.5f;
+    const float texture_aspect = static_cast<float>(iw) / static_cast<float>(ih);
+
+    gs_technique_t *technique = gs_effect_get_technique(effect, "Draw");
+    if (!technique) {
+        gs_matrix_pop();
+        gs_projection_pop();
+        gs_blend_state_pop();
+        return;
     }
+    const size_t passes = gs_technique_begin(technique);
+    for (size_t pass = 0; pass < passes; ++pass) {
+        if (!gs_technique_begin_pass(technique, pass))
+            continue;
 
-    gs_render_stop(GS_TRIS);
+        for (const auto &p : s->particles) {
+            const float life_t = clamp01(p.life / std::max(0.001f, p.max_life));
+            const float fade = s->test_mode ? 1.0f : std::sin(life_t * 3.14159265f);
+            const float size = std::max(2.0f, p.size * audio_size * (0.35f + 0.65f * fade));
+            const float draw_h = size;
+            const float draw_w = std::max(2.0f, draw_h * texture_aspect);
 
-    while (gs_effect_loop(s->effect, "Draw")) {
-        // The immediate vertex buffer is already prepared by gs_render_stop().
-        // The effect handles the position transform and per-vertex color.
-        gs_draw(GS_TRIS, 0, static_cast<uint32_t>(s->particles.size() * 6));
+            gs_matrix_push();
+            gs_matrix_translate3f(p.x, p.y, 0.0f);
+            gs_matrix_rotaa4f(0.0f, 0.0f, 1.0f, p.rot);
+            gs_matrix_translate3f(-draw_w * 0.5f, -draw_h * 0.5f, 0.0f);
+            gs_draw_sprite(texture, 0, static_cast<uint32_t>(draw_w), static_cast<uint32_t>(draw_h));
+            gs_matrix_pop();
+        }
+
+        gs_technique_end_pass(technique);
     }
+    gs_technique_end(technique);
 
-    UNUSED_PARAMETER(s->glow);
+    gs_matrix_pop();
+    gs_projection_pop();
+    gs_blend_state_pop();
 }
 
 struct obs_source_info audio_reactive_particles_source = {
