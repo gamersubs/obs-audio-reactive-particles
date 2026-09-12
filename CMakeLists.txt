@@ -21,7 +21,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     src/particle-source.cpp
 )
 
-target_compile_features(${CMAKE_PROJECT_NAME} PRIVATE cxx_std_17)
+target_compile_features(${CMAKE_PROJECT_NAME} PRIVATE cxx_std_20)
 
 if(MSVC)
     target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE /W4 /permissive-)

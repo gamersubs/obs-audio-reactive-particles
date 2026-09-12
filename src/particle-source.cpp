@@ -431,7 +431,7 @@ static void source_render(void *data, gs_effect_t *)
             col[k] = c1[k] * (1.0f - color_t) + c2[k] * color_t;
         col[3] = std::max(0.0f, std::min(1.0f, alpha * col[3]));
 
-        const float r = p.size * (1.0f + 0.8f * s->reactive) * (0.85f + 0.15f * s->glow);
+        const float r = p.size * pulse * (1.0f + 0.8f * s->reactive) * (0.85f + 0.15f * s->glow);
         const float x = p.x;
         const float y = p.y;
 
