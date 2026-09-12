@@ -396,7 +396,6 @@ static void source_render(void *data, gs_effect_t *)
             p.size *= (1.0f + 0.7f * s->reactive);
         }
 
-        const float pulse = 1.0f + 0.35f * std::sin(s->time * 5.0f + p.seed) + audio_push;
         p.vy += s->gravity * dt;
         p.vx += std::sin(s->time * 0.7f + p.seed) * 3.0f * dt;
         p.x += p.vx * dt;
@@ -422,6 +421,7 @@ static void source_render(void *data, gs_effect_t *)
     // Two triangles per particle. Color is computed per-vertex so each particle
     // can fade at birth/death without requiring a second texture.
     for (const auto &p : s->particles) {
+        const float pulse = 1.0f + 0.35f * std::sin(s->time * 5.0f + p.seed) + audio_push;
         const float life_t = clamp01(p.life / std::max(0.001f, p.max_life));
         float alpha = std::sin(life_t * 3.14159265f);
         alpha *= (0.25f + 0.75f * clamp01(0.25f + s->reactive));
@@ -469,10 +469,10 @@ struct obs_source_info audio_reactive_particles_source = {
     .get_name = source_name,
     .create = source_create,
     .destroy = source_destroy,
-    .update = source_update,
-    .get_defaults = source_defaults,
-    .get_properties = source_properties,
-    .video_render = source_render,
     .get_width = source_width,
     .get_height = source_height,
+    .get_defaults = source_defaults,
+    .get_properties = source_properties,
+    .update = source_update,
+    .video_render = source_render,
 };
