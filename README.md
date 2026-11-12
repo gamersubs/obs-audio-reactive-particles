@@ -1,15 +1,32 @@
-# Audio Reactive Particles for OBS Studio
+# Audio Reactive Particles for OBS Studio 33.0.1 (Windows x64)
 
-This version uses OBS raw audio capture callbacks for the selected audio source instead of the OBS volume-meter wrapper. Particle images are rendered as OBS texture sprites.
+This is the v10 image-sprite particle source updated to build against OBS Studio 33.0.1.
 
-## Test
+## Features
 
-Enable **Test particles (ignore audio)**. Particles should appear without an audio source.
+- Uses OBS raw audio capture callbacks for the selected audio source.
+- Calculates RMS and peak directly from captured source samples.
+- Renders PNG particle sprites using OBS graphics textures.
+- Test particles mode remains available to validate rendering without audio.
+- Audio level affects particle emission and particle size.
 
-## Audio
+## OBS 33 changes
 
-Select an OBS audio source such as **Desktop Audio**. The raw audio callback calculates RMS and peak directly from the source samples. Louder audio increases emission and particle size.
+- Build pins OBS Studio source version 33.0.1.
+- Uses the official OBS dependency packages dated 2026-08-26 (Windows x64).
+- Packages the module in the OBS 33+ plugin folder layout:
+  `obs-audio-reactive-particles/obs-audio-reactive-particles.dll`
+- Packages plugin assets under the adjacent `data` folder.
 
 ## Build
 
-The GitHub Actions workflow bootstraps the official OBS plugin-template CMake infrastructure and builds a Windows x64 artifact.
+Run **Actions → Build Windows plugin (OBS 33.0.1) → Run workflow**.
+The workflow keeps the requested `ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true` environment variable.
+
+## Install
+
+Extract the generated artifact and copy the `obs-audio-reactive-particles` folder into:
+
+`C:\ProgramData\obs-studio\plugins\`
+
+See `INSTALL-WINDOWS.txt` for the exact final file paths.

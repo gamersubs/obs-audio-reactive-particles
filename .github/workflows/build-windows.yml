@@ -1,4 +1,4 @@
-name: Build Windows plugin
+name: Build Windows plugin (OBS 33.0.1)
 
 on:
   workflow_dispatch:
@@ -15,7 +15,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Bootstrap OBS plugin template CMake
+      - name: Bootstrap OBS plugin-template CMake
         shell: pwsh
         run: |
           $template = Join-Path $env:RUNNER_TEMP "obs-plugintemplate"
@@ -23,26 +23,73 @@ jobs:
           git clone --depth 1 https://github.com/obsproject/obs-plugintemplate.git $template
           Copy-Item -Recurse -Force (Join-Path $template "cmake") (Join-Path $env:GITHUB_WORKSPACE "cmake")
 
-      - name: Configure
+          # OBS 33.0.1's source archive is distributed as a .tar.gz tag archive.
+          # The current template's Windows dependency helper expects VERSION.zip,
+          # so match the OBS archive URL and the SHA-256 pinned in buildspec.json.
+          $buildspecModule = Join-Path $env:GITHUB_WORKSPACE "cmake\windows\buildspec.cmake"
+          $content = Get-Content -Raw $buildspecModule
+          $old = 'set(obs-studio_filename "VERSION.zip")'
+          if (-not $content.Contains($old)) {
+            throw "Could not find the expected obs-studio archive filename in buildspec.cmake. Template layout changed."
+          }
+          $content = $content.Replace($old, 'set(obs-studio_filename "VERSION.tar.gz")')
+          Set-Content -Path $buildspecModule -Value $content -NoNewline -Encoding utf8
+
+      - name: Configure OBS 33.0.1 x64
         shell: pwsh
         run: cmake -S . -B build_x64 -G "Visual Studio 17 2022" -A x64
 
-      - name: Build
+      - name: Build plugin
         shell: pwsh
         run: cmake --build build_x64 --config Release --parallel
 
-      - name: Install
+      - name: Install build output
         shell: pwsh
         run: cmake --install build_x64 --config Release --prefix package
+
+      - name: Stage OBS 33 plugin layout
+        shell: pwsh
+        run: |
+          $packageRoot = Join-Path $env:GITHUB_WORKSPACE "package"
+          $stageRoot = Join-Path $env:GITHUB_WORKSPACE "stage"
+          $pluginName = "obs-audio-reactive-particles"
+          $pluginRoot = Join-Path $stageRoot $pluginName
+          $dataRoot = Join-Path $pluginRoot "data"
+
+          if (Test-Path $stageRoot) { Remove-Item -Recurse -Force $stageRoot }
+          New-Item -ItemType Directory -Force -Path $dataRoot | Out-Null
+
+          $dll = Get-ChildItem -Path $packageRoot -Filter "$pluginName.dll" -File -Recurse | Select-Object -First 1
+          if (-not $dll) {
+            throw "Could not find $pluginName.dll in the CMake install output."
+          }
+          Copy-Item -LiteralPath $dll.FullName -Destination (Join-Path $pluginRoot "$pluginName.dll") -Force
+
+          $particleImage = Get-ChildItem -Path $packageRoot -Filter "particle.png" -File -Recurse | Select-Object -First 1
+          if (-not $particleImage) {
+            throw "Could not find particle.png in the CMake install output."
+          }
+          $pluginDataSource = $particleImage.DirectoryName
+          Copy-Item -Path (Join-Path $pluginDataSource "*") -Destination $dataRoot -Recurse -Force
+
+          if (-not (Test-Path (Join-Path $dataRoot "locale\en-US.ini"))) {
+            throw "Plugin locale data was not staged into the OBS 33 data folder."
+          }
+          if (-not (Test-Path (Join-Path $dataRoot "particle.png"))) {
+            throw "Default particle image was not staged into the OBS 33 data folder."
+          }
+
+          Write-Host "Staged OBS 33 plugin layout:"
+          Get-ChildItem -Path $stageRoot -Recurse | ForEach-Object { Write-Host $_.FullName }
 
       - name: Package
         shell: pwsh
         run: |
-          Compress-Archive -Path package\* -DestinationPath obs-audio-reactive-particles-windows-x64.zip -Force
+          Compress-Archive -Path stage\* -DestinationPath obs-audio-reactive-particles-obs33-windows-x64.zip -Force
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: obs-audio-reactive-particles-windows-x64
-          path: obs-audio-reactive-particles-windows-x64.zip
+          name: obs-audio-reactive-particles-obs33-windows-x64
+          path: obs-audio-reactive-particles-obs33-windows-x64.zip
           if-no-files-found: error

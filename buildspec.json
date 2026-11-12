@@ -3,43 +3,37 @@
     "obs-studio": {
       "version": "33.0.1",
       "baseUrl": "https://github.com/obsproject/obs-studio/archive/refs/tags",
-      "label": "OBS sources",
+      "label": "OBS Studio 33.0.1 sources",
       "hashes": {
-        "macos": "db034bc3d2c137ec7f1809cbef4fc90c8948652b90a860078410482457d8a574",
-        "windows-x64": "0cc1bd46a3d60c8f4317b38c27414fc0472e04609f4e67ad2142ed1598ef5462"
+        "windows-x64": "9174ee0e3677c92d0d060bdce4c5d44dfee9fd3afddfb6333f098fd029b8de2b"
       }
     },
     "prebuilt": {
-      "version": "2026-07-15",
+      "version": "2026-08-26",
       "baseUrl": "https://github.com/obsproject/obs-deps/releases/download",
       "label": "Pre-Built obs-deps",
       "hashes": {
-        "macos": "4ecb4c598dfa853168df6c2a0c4e0ffec8495a81fbd1ba051ef88ecd5e0f7e53",
-        "windows-x64": "6f90e9598fa10cff5ad23cdcfae49b87868c07bf896b02cd464582b4ce2f2ba9"
+        "windows-x64": "eb5e67ad110543bcb65a4612bcd654b6427972ea70d26412b48d7e21532dfe67"
       }
     },
     "qt6": {
-      "version": "2026-07-15",
+      "version": "2026-08-26",
       "baseUrl": "https://github.com/obsproject/obs-deps/releases/download",
       "label": "Pre-Built Qt6",
       "hashes": {
-        "macos": "d4b8058612a7067e44b2205fe7925ee24e9ec6b15ac8c29d3e6230c70030b102",
-        "windows-x64": "7c7f985711d80467bdc1795b6592275a27d5b0e5a2c7a61db1f2c1d08d6a5579"
-      },
-      "debugSymbols": {
-        "windows-x64": "471d0b2191c424a520a51d064f3741084f117e1ff6ee5af1d16aabcdbacc6659"
+        "windows-x64": "7dd60d2883207ecccceb2270538140fccd1b5022e06beedfbc3ba46c7d2e76ae"
       }
     }
   },
   "platformConfig": {
     "macos": {
-      "bundleId": "com.example.obs-audio-reactive-particles"
+      "bundleId": "com.gamersubs.obs-audio-reactive-particles"
     }
   },
   "name": "obs-audio-reactive-particles",
-  "displayName": "OBS Audio Reactive Particles",
-  "version": "0.1.0",
-  "author": "OpenAI",
-  "website": "",
+  "displayName": "Audio Reactive Particles",
+  "version": "1.0.0",
+  "author": "gamersubs",
+  "website": "https://github.com/gamersubs/obs-audio-reactive-particles",
   "email": ""
 }

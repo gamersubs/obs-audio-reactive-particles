@@ -1,13 +1,23 @@
-The GitHub Actions artifact is an OBS-style install package.
+Audio Reactive Particles - OBS Studio 33.0.1 (Windows x64)
 
-Close OBS, then merge the artifact's bin and data folders into:
+This ZIP uses the OBS Studio 33+ third-party plugin layout.
 
-C:\Program Files\obs-studio\
+1. Close OBS Studio completely.
+2. Extract the ZIP.
+3. Copy the extracted folder named "obs-audio-reactive-particles" into:
 
-After copying, the plugin DLL should be under:
+   C:\ProgramData\obs-studio\plugins\
 
-C:\Program Files\obs-studio\bin\64bit\
+The final paths should be:
 
-and plugin data under:
+   C:\ProgramData\obs-studio\plugins\obs-audio-reactive-particles\obs-audio-reactive-particles.dll
+   C:\ProgramData\obs-studio\plugins\obs-audio-reactive-particles\data\particle.png
+   C:\ProgramData\obs-studio\plugins\obs-audio-reactive-particles\data\locale\en-US.ini
 
-C:\Program Files\obs-studio\data\obs-plugins\
+Do not place this OBS 33 package in Program Files\obs-studio\obs-plugins.
+That is the legacy plugin location.
+
+If an older copy of this plugin is already installed in the legacy Program Files
+location, remove that old copy after confirming that the ProgramData copy loads.
+
+Start OBS and add the source using Sources > + > Audio Reactive Particles.

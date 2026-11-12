@@ -1,0 +1,13 @@
+OBS Studio 33.0.1 update
+
+Build inputs pinned in buildspec.json:
+- OBS Studio sources 33.0.1
+- OBS deps Windows x64 2026-08-26
+- Qt6 Windows x64 2026-08-26
+
+The OBS source archive is GitHub's 33.0.1 tag archive (.tar.gz). The workflow
+patches the cloned OBS plugin-template Windows dependency helper from VERSION.zip
+to VERSION.tar.gz so its download filename matches the configured URL/hash.
+
+The artifact is staged in the new OBS Studio 33+ Windows plugin layout, rather
+than the legacy bin/64bit + data/obs-plugins layout.
