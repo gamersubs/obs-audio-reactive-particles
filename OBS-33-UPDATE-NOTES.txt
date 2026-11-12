@@ -1,13 +1,20 @@
-OBS Studio 33.0.1 update
+OBS Studio 33.0.1 update (v12)
 
 Build inputs pinned in buildspec.json:
 - OBS Studio sources 33.0.1
 - OBS deps Windows x64 2026-08-26
 - Qt6 Windows x64 2026-08-26
 
+OBS 33 image API compatibility:
+- Replaced removed gs_image_file_t with gs_image_file_ex_t.
+- Replaced gs_image_file_init/free/init_texture with the gs_image_file_ex_* API.
+- Uses GS_IMAGE_ALPHA_STRAIGHT to preserve the straight-alpha sprite data
+  expected by the particle renderer's SRCALPHA/INVSRCALPHA blending.
+- Added GIF frame ticking and texture updates for animated particle images.
+
 The OBS source archive is GitHub's 33.0.1 tag archive (.tar.gz). The workflow
 patches the cloned OBS plugin-template Windows dependency helper from VERSION.zip
 to VERSION.tar.gz so its download filename matches the configured URL/hash.
 
-The artifact is staged in the new OBS Studio 33+ Windows plugin layout, rather
+The artifact is staged in the OBS Studio 33+ Windows plugin layout, rather
 than the legacy bin/64bit + data/obs-plugins layout.

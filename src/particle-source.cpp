@@ -71,7 +71,7 @@ struct ParticleSource {
     bool test_mode = true;
     std::string particle_image_path;
     std::string loaded_particle_image_path;
-    gs_image_file_t particle_image{};
+    gs_image_file_ex_t particle_image{};
     bool particle_image_initialized = false;
 
     std::vector<Particle> particles;
@@ -232,7 +232,7 @@ static void unload_particle_image(ParticleSource *s)
     if (!s || !s->particle_image_initialized)
         return;
 
-    gs_image_file_free(&s->particle_image);
+    gs_image_file_ex_free(&s->particle_image);
     s->particle_image_initialized = false;
     s->loaded_particle_image_path.clear();
 }
@@ -254,11 +254,19 @@ static bool load_particle_image(ParticleSource *s)
 
     unload_particle_image(s);
 
-    gs_image_file_init(&s->particle_image, path.c_str());
-    gs_image_file_init_texture(&s->particle_image);
-    if (!s->particle_image.texture || !s->particle_image.cx || !s->particle_image.cy) {
-        blog(LOG_ERROR, "[audio-reactive-particles] Failed to load particle image: %s", path.c_str());
-        gs_image_file_free(&s->particle_image);
+    // OBS 33 replaced gs_image_file_t with gs_image_file_ex_t. Decode the image
+    // first, then create its GPU texture while this source is rendering inside
+    // OBS's graphics context.
+    gs_image_file_ex_init(&s->particle_image, path.c_str(), GS_IMAGE_ALPHA_STRAIGHT);
+    if (!s->particle_image.loaded || !s->particle_image.cx || !s->particle_image.cy) {
+        blog(LOG_ERROR, "[audio-reactive-particles] Failed to decode particle image: %s", path.c_str());
+        return false; // _ex_init cleans up on decode failure.
+    }
+
+    gs_image_file_ex_init_texture(&s->particle_image);
+    if (!s->particle_image.texture) {
+        blog(LOG_ERROR, "[audio-reactive-particles] Failed to create particle texture: %s", path.c_str());
+        gs_image_file_ex_free(&s->particle_image);
         return false;
     }
 
@@ -423,6 +431,13 @@ static void source_render(void *data, gs_effect_t *)
     float dt = last_ns ? static_cast<float>(now - last_ns) / 1.0e9f : (1.0f / 60.0f);
     last_ns = now;
     dt = std::max(0.0001f, std::min(0.05f, dt));
+
+    // The OBS 33 image helper can animate GIF particle sprites.
+    if (s->particle_image.is_animated_gif) {
+        const uint64_t elapsed_ns = static_cast<uint64_t>(dt * 1.0e9f);
+        if (gs_image_file_ex_tick(&s->particle_image, elapsed_ns))
+            gs_image_file_ex_update_texture(&s->particle_image);
+    }
 
     const float raw_audio = s->test_mode ? 1.0f : clamp01(s->audio_level.load(std::memory_order_relaxed));
     const float smoothing = std::max(0.0f, s->audio_smooth);

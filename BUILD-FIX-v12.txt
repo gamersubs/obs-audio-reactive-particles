@@ -1,0 +1,9 @@
+Build fix v12
+
+The OBS 33.0.1 compile failed because libobs no longer exposes the legacy
+gs_image_file_t / gs_image_file_init / gs_image_file_init_texture /
+gs_image_file_free API. The source now uses gs_image_file_ex_t and the matching
+gs_image_file_ex_* functions declared in graphics/image-file.h. It also uses
+GS_IMAGE_ALPHA_STRAIGHT and checks image decode success before creating the GPU
+texture. Animated GIF images are advanced using gs_image_file_ex_tick() and
+gs_image_file_ex_update_texture().

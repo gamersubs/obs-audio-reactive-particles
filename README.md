@@ -1,12 +1,13 @@
 # Audio Reactive Particles for OBS Studio 33.0.1 (Windows x64)
 
-This is the v10 image-sprite particle source updated to build against OBS Studio 33.0.1.
+This is the v10 image-sprite particle source updated to build against OBS Studio 33.0.1. The image loader uses OBS 33's replacement `gs_image_file_ex` API.
 
 ## Features
 
 - Uses OBS raw audio capture callbacks for the selected audio source.
 - Calculates RMS and peak directly from captured source samples.
-- Renders PNG particle sprites using OBS graphics textures.
+- Renders PNG/JPG/BMP/GIF particle sprites using OBS graphics textures.
+- Uses OBS 33 `gs_image_file_ex_*` image-helper functions and supports animated GIF frames.
 - Test particles mode remains available to validate rendering without audio.
 - Audio level affects particle emission and particle size.
 
